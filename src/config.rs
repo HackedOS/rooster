@@ -16,10 +16,11 @@ pub fn load_config() -> Config {
         .expect("Malformed config file");
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 pub struct Server {
     pub container_name: String,
     pub display_name: String,
-    // pub ip: String,
-    // pub port: i32,
+    pub ip: String,
+    pub port: i32,
+    pub password: String,
 }

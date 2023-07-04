@@ -1,17 +1,17 @@
 mod config;
+mod server;
 
 use bollard::container::AttachContainerOptions;
 use bollard::Docker;
 
 use config::{load_config, Config};
 use futures_util::StreamExt;
-use once_cell::sync::Lazy;
 
 use regex::Regex;
 use serenity::async_trait;
 use serenity::framework::standard::macros::group;
 use serenity::framework::standard::StandardFramework;
-use serenity::model::prelude::{ChannelId, Ready};
+use serenity::model::prelude::{ChannelId, Message, Ready};
 use serenity::prelude::*;
 
 #[group]
@@ -42,27 +42,44 @@ impl EventHandler for Handler {
             tokio::spawn(async move {
                 while let Some(Ok(output)) = output.next().await {
                     let parse_pattern = Regex::new(r"^\[\d{2}:\d{2}:\d{2}\] \[Server thread/INFO\]: (<.*|[\w §]+ (joined|left) the game)$").unwrap();
-                    if parse_pattern.is_match(output.to_string().trim()) {
-                        ChannelId(CONFIG.bridge_channel)
-                            .send_message(&ctx1.http, |m| {
-                                m.content(format!(
-                                    "[{}]: {}",
-                                    server.display_name,
-                                    output.to_string().chars().collect::<Vec<char>>()[33..]
-                                        .iter()
-                                        .collect::<String>()
-                                ))
-                            })
-                            .await
-                            .unwrap();
+                    if !parse_pattern.is_match(output.to_string().trim()) {
+                        continue;
+                    }
+                    let msg = &format!(
+                        "[{}]: {}",
+                        server.display_name,
+                        output.to_string().chars().collect::<Vec<char>>()[33..]
+                            .iter()
+                            .collect::<String>()
+                    );
+                    ChannelId(CONFIG.bridge_channel)
+                        .send_message(&ctx1.http, |m| {
+                            m.content(msg)
+                        })
+                        .await
+                        .unwrap();
+                    let mut send_servers = CONFIG.servers.clone();
+                    send_servers.retain(|s| s != server);
+                    for server in send_servers {
+                        server.send_chat(msg).await
                     }
                 }
             });
         }
     }
+    async fn message(&self, _ctx: Context, msg: Message) {
+        if msg.channel_id.0 != CONFIG.bridge_channel || msg.author.bot {
+            return;
+        }
+            for server in &CONFIG.servers {
+                server.send_chat(&format!("[{0}] {1}", msg.author.name, msg.content)).await
+            }
+        }
 }
 
-pub static CONFIG: Lazy<Config> = Lazy::new(load_config);
+lazy_static::lazy_static! {
+pub static ref CONFIG: Config = load_config();
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
