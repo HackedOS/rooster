@@ -9,7 +9,7 @@ edition = "2021"
 bollard = "0.14"
 futures-util = "0.3"
 lazy_static = "1.4.0"
-rcon-rs = "0.1"
+rcon = { version = "0.6.0", features = ["rt-async-std"] }
 regex = "1.8"
 ron = "0.8"
 serde = { version = "1", features = ["derive"] }

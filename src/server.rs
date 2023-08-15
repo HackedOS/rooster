@@ -1,6 +1,6 @@
 use bollard::{container::{ListContainersOptions, AttachContainerOptions}, Docker};
 use futures_util::StreamExt;
-use rcon_rs::Client;
+use rcon::{AsyncStdStream, Connection, Error};
 use regex::Regex;
 use serenity::{prelude::Context, model::prelude::ChannelId};
 
@@ -17,13 +17,12 @@ impl Server {
         }
     }
     pub async fn rcon_send(&self, msg: &str) {
-        let mut conn = self.connect().await;
-        if conn.auth(&self.password).is_ok() {
-            let _ = conn.send(dbg!(msg), None);
-        };
-    }
-    async fn connect(&self) -> Client {
-        Client::new(&self.ip, &self.port.to_string())
+        if let Ok(mut conn) = <Connection<AsyncStdStream>>::builder()
+        .enable_minecraft_quirks(true)
+        .connect(format!("{}:{}", self.ip,self.port), &self.password)
+        .await{
+            let _ = conn.cmd(msg).await;
+        }
     }
 }
 
