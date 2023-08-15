@@ -1,8 +1,14 @@
-use bollard::{container::{ListContainersOptions, AttachContainerOptions}, Docker};
+use std::time::Duration;
+
+use bollard::{
+    container::{AttachContainerOptions, ListContainersOptions},
+    Docker,
+};
 use futures_util::StreamExt;
-use rcon::{AsyncStdStream, Connection, Error};
+use rcon::{AsyncStdStream, Connection};
 use regex::Regex;
-use serenity::{prelude::Context, model::prelude::ChannelId};
+use serenity::{model::prelude::ChannelId, prelude::Context};
+use tokio::time::sleep;
 
 use crate::{config::Server, CONFIG};
 
@@ -64,42 +70,60 @@ async fn check_container_status(docker: &Docker, container_name: &str) -> Result
 
 pub async fn chatbridge(docker: &Docker, server: Server, ctx: Context) {
     let mut output = docker
-                .attach_container(
-                    &server.container_name,
-                    Some(AttachContainerOptions::<String> {
-                        stdout: Some(true),
-                        stderr: Some(true),
-                        stream: Some(true),
-                        ..Default::default()
-                    }),
-                )
+        .attach_container(
+            &server.container_name,
+            Some(AttachContainerOptions::<String> {
+                stdout: Some(true),
+                stderr: Some(true),
+                stream: Some(true),
+                ..Default::default()
+            }),
+        )
+        .await
+        .unwrap()
+        .output;
+    while let Some(Ok(output)) = output.next().await {
+        let parse_pattern = Regex::new(
+            r"^\[\d{2}:\d{2}:\d{2}\] \[Server thread/INFO\]: (<.*|[\w §]+ (joined|left) the game)$",
+        )
+        .unwrap();
+        if !parse_pattern.is_match(output.to_string().trim()) {
+            continue;
+        }
+        let msg = &format!(
+            "[{}]: {}",
+            server.display_name,
+            output.to_string().chars().collect::<Vec<char>>()[33..]
+                .iter()
+                .collect::<String>()
+        );
+        ChannelId(CONFIG.bridge_channel)
+            .send_message(&ctx.http, |m| m.content(msg))
+            .await
+            .unwrap();
+        let mut send_servers = CONFIG.servers.clone();
+        send_servers.retain(|s| s != &server);
+        for server in send_servers {
+            server.send_chat(msg).await
+        }
+    }
+    println!("{} is offline", server.display_name);
+    sleep(Duration::from_secs(10)).await;
+}
+
+pub fn chatbridge_keepalive(server: Server, ctx: Context) {
+    tokio::spawn(async move {
+        let docker = Docker::connect_with_socket_defaults().unwrap();
+        loop {
+            while check_container_status(&docker, &server.container_name)
                 .await
                 .unwrap()
-                .output;
-            tokio::spawn(async move {
-                while let Some(Ok(output)) = output.next().await {
-                    let parse_pattern = Regex::new(r"^\[\d{2}:\d{2}:\d{2}\] \[Server thread/INFO\]: (<.*|[\w §]+ (joined|left) the game)$").unwrap();
-                    if !parse_pattern.is_match(output.to_string().trim()) {
-                        continue;
-                    }
-                    let msg = &format!(
-                        "[{}]: {}",
-                        server.display_name,
-                        output.to_string().chars().collect::<Vec<char>>()[33..]
-                            .iter()
-                            .collect::<String>()
-                    );
-                    ChannelId(CONFIG.bridge_channel)
-                        .send_message(&ctx.http, |m| {
-                            m.content(msg)
-                        })
-                        .await
-                        .unwrap();
-                    let mut send_servers = CONFIG.servers.clone();
-                    send_servers.retain(|s| s != &server);
-                    for server in send_servers {
-                        server.send_chat(msg).await
-                    }
-                }
-            });
+                == false
+            {
+                sleep(Duration::from_secs(1)).await;
+            }
+            println!("{} is online", server.display_name);
+            chatbridge(&docker, server.clone(), ctx.clone()).await;
+        }
+    });
 }

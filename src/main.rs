@@ -1,15 +1,13 @@
 mod config;
 mod server;
 
-use bollard::Docker;
-
 use config::{load_config, Config};
 use serenity::async_trait;
 use serenity::framework::standard::macros::group;
 use serenity::framework::standard::StandardFramework;
 use serenity::model::prelude::{Message, Ready};
 use serenity::prelude::*;
-use server::chatbridge;
+use server::chatbridge_keepalive;
 
 #[group]
 struct General;
@@ -19,10 +17,8 @@ struct Handler;
 #[async_trait]
 impl EventHandler for Handler {
     async fn ready(&self, ctx: Context, _: Ready) {
-        let docker = Docker::connect_with_socket_defaults().unwrap();
-
         for server in &CONFIG.servers {
-            chatbridge(&docker, server.clone(), ctx.clone()).await;
+            chatbridge_keepalive(server.clone(), ctx.clone());
         }
     }
     async fn message(&self, _ctx: Context, msg: Message) {
