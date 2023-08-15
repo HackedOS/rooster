@@ -1,18 +1,15 @@
 mod config;
 mod server;
 
-use bollard::container::AttachContainerOptions;
 use bollard::Docker;
 
 use config::{load_config, Config};
-use futures_util::StreamExt;
-
-use regex::Regex;
 use serenity::async_trait;
 use serenity::framework::standard::macros::group;
 use serenity::framework::standard::StandardFramework;
-use serenity::model::prelude::{ChannelId, Message, Ready};
+use serenity::model::prelude::{Message, Ready};
 use serenity::prelude::*;
+use server::chatbridge;
 
 #[group]
 struct General;
@@ -25,46 +22,7 @@ impl EventHandler for Handler {
         let docker = Docker::connect_with_socket_defaults().unwrap();
 
         for server in &CONFIG.servers {
-            let mut output = docker
-                .attach_container(
-                    &server.container_name,
-                    Some(AttachContainerOptions::<String> {
-                        stdout: Some(true),
-                        stderr: Some(true),
-                        stream: Some(true),
-                        ..Default::default()
-                    }),
-                )
-                .await
-                .unwrap()
-                .output;
-            let ctx1 = ctx.clone();
-            tokio::spawn(async move {
-                while let Some(Ok(output)) = output.next().await {
-                    let parse_pattern = Regex::new(r"^\[\d{2}:\d{2}:\d{2}\] \[Server thread/INFO\]: (<.*|[\w §]+ (joined|left) the game)$").unwrap();
-                    if !parse_pattern.is_match(output.to_string().trim()) {
-                        continue;
-                    }
-                    let msg = &format!(
-                        "[{}]: {}",
-                        server.display_name,
-                        output.to_string().chars().collect::<Vec<char>>()[33..]
-                            .iter()
-                            .collect::<String>()
-                    );
-                    ChannelId(CONFIG.bridge_channel)
-                        .send_message(&ctx1.http, |m| {
-                            m.content(msg)
-                        })
-                        .await
-                        .unwrap();
-                    let mut send_servers = CONFIG.servers.clone();
-                    send_servers.retain(|s| s != server);
-                    for server in send_servers {
-                        server.send_chat(msg).await
-                    }
-                }
-            });
+            chatbridge(&docker, server.clone(), ctx.clone()).await;
         }
     }
     async fn message(&self, _ctx: Context, msg: Message) {
