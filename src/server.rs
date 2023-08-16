@@ -107,7 +107,10 @@ pub async fn chatbridge(docker: &Docker, server: Server, ctx: Context) {
             server.send_chat(msg).await
         }
     }
-    println!("{} is offline", server.display_name);
+    ChannelId(CONFIG.bridge_channel)
+            .send_message(&ctx.http, |m| m.content(format!("{} is offline", server.display_name)))
+            .await
+            .unwrap();
     sleep(Duration::from_secs(10)).await;
 }
 
@@ -122,7 +125,10 @@ pub fn chatbridge_keepalive(server: Server, ctx: Context) {
             {
                 sleep(Duration::from_secs(1)).await;
             }
-            println!("{} is online", server.display_name);
+            ChannelId(CONFIG.bridge_channel)
+            .send_message(&ctx.http, |m| m.content(format!("{} is online", server.display_name)))
+            .await
+            .unwrap();
             chatbridge(&docker, server.clone(), ctx.clone()).await;
         }
     });
