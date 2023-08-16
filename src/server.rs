@@ -24,9 +24,10 @@ impl Server {
     }
     pub async fn rcon_send(&self, msg: &str) {
         if let Ok(mut conn) = <Connection<AsyncStdStream>>::builder()
-        .enable_minecraft_quirks(true)
-        .connect(format!("{}:{}", self.ip,self.port), &self.password)
-        .await{
+            .enable_minecraft_quirks(true)
+            .connect(format!("{}:{}", self.ip, self.port), &self.password)
+            .await
+        {
             let _ = conn.cmd(msg).await;
         }
     }
@@ -47,14 +48,17 @@ fn clear_formatting(msg: &str) -> Option<String> {
     }
 }
 
-async fn check_container_status(docker: &Docker, container_name: &str) -> Result<bool, Box<dyn std::error::Error>> {
+async fn check_container_status(
+    docker: &Docker,
+    container_name: &str,
+) -> Result<bool, Box<dyn std::error::Error>> {
     let options = ListContainersOptions::<String> {
         all: true,
         ..Default::default()
     };
 
     let containers = docker.list_containers(Some(options)).await?;
-    
+
     for container in containers {
         if let Some(names) = container.names {
             for name in names {
@@ -108,9 +112,11 @@ pub async fn chatbridge(docker: &Docker, server: Server, ctx: Context) {
         }
     }
     ChannelId(CONFIG.bridge_channel)
-            .send_message(&ctx.http, |m| m.content(format!("{} is offline", server.display_name)))
-            .await
-            .unwrap();
+        .send_message(&ctx.http, |m| {
+            m.content(format!("{} is offline", server.display_name))
+        })
+        .await
+        .unwrap();
     sleep(Duration::from_secs(10)).await;
 }
 
@@ -118,17 +124,18 @@ pub fn chatbridge_keepalive(server: Server, ctx: Context) {
     tokio::spawn(async move {
         let docker = Docker::connect_with_socket_defaults().unwrap();
         loop {
-            while check_container_status(&docker, &server.container_name)
+            while !check_container_status(&docker, &server.container_name)
                 .await
                 .unwrap()
-                == false
             {
                 sleep(Duration::from_secs(1)).await;
             }
             ChannelId(CONFIG.bridge_channel)
-            .send_message(&ctx.http, |m| m.content(format!("{} is online", server.display_name)))
-            .await
-            .unwrap();
+                .send_message(&ctx.http, |m| {
+                    m.content(format!("{} is online", server.display_name))
+                })
+                .await
+                .unwrap();
             chatbridge(&docker, server.clone(), ctx.clone()).await;
         }
     });

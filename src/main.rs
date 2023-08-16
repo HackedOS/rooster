@@ -25,10 +25,12 @@ impl EventHandler for Handler {
         if msg.channel_id.0 != CONFIG.bridge_channel || msg.author.bot {
             return;
         }
-            for server in &CONFIG.servers {
-                server.send_chat(&format!("[{0}] {1}", msg.author.name, msg.content)).await
-            }
+        for server in &CONFIG.servers {
+            server
+                .send_chat(&format!("[{0}] {1}", msg.author.name, msg.content))
+                .await
         }
+    }
 }
 
 lazy_static::lazy_static! {
