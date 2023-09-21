@@ -21,8 +21,8 @@ impl EventHandler for Handler {
             chatbridge_keepalive(server.clone(), ctx.clone());
         }
     }
-    async fn message(&self, _ctx: Context, msg: Message) {
-        if msg.channel_id.0 != CONFIG.bridge_channel || msg.author.bot {
+    async fn message(&self, ctx: Context, msg: Message) {
+        if msg.channel_id.0 != CONFIG.bridge_channel || msg.is_own(&ctx.cache) {
             return;
         }
         for server in &CONFIG.servers {
